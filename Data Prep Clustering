@@ -171,3 +171,67 @@ names(df)[names(df) == "Service Order Number.x"] <- "Service Order Number"
 ## Create Clustering df cl_df ##
 
 cl_df = df[ , c("Equipment Number", "Material Pricing Group Description", "Service Order Type", "Service Location", "Maintenance Activity Type", "Service Order Type", "Equipment Description", "SOperMonth")]
+
+cl_df$`Equipment Number` <- as.factor(cl_df$`Equipment Number`)
+cl_df$`Material Pricing Group Description` <- as.factor(cl_df$`Material Pricing Group Description`)
+cl_df$`Equipment Description` <- as.factor(cl_df$`Equipment Description`)
+
+##clustering with daisy function (gower measure)
+install.packages("cluster")
+library(cluster)
+
+##sample of rows to experiment
+sample_cl <- cl_df[sample(nrow(cl_df),10000),]
+distances <- daisy(sample_cl,metric = "gower")
+
+#save results in matrix
+gower <- as.matrix(distances)
+
+#cluster randomly set to 4
+cluster1 <- pam(distances, diss = TRUE, k = 4)
+table(cluster1$clustering)
+
+#assign cluster to each observation
+assignedcluster <- cbind(sample_cl, cluster1$clustering)
+
+#define optimal number of clusters
+avg_silhouette <- NA
+
+for(i in 2:10){
+  cluster1 <- pam(distances, diss = TRUE, k = i)
+  avg_silhouette[i] <- cluster1$silinfo$avg.width
+}
+
+plot(1:10, avg_silhouette, xlab ='total number of clusters',
+     ylab = 'average silhouette', bty = 'n')
+lines(1:10, avg_silhouette)
+
+#according to plot 2 cluster has the highest average silhouette, but not optimal for contracting purposes
+#5 clusters closest to avg silhouette of 2 , hence choose 5 as contract number
+
+k <- 5
+final_cl <- pam(distances, diss = TRUE, k = k)
+pam_results <- sample_cl %>%
+  mutate(cluster = final_cl$clustering) %>%
+  group_by(cluster) %>%
+  do(the_summary = summary(.))
+
+pam_results$the_summary
+
+#assign
+assignedcluster1 <- cbind(sample_cl, final_cl$clustering)
+
+#visualize
+install.packages("Rtsne")
+install.packages("ggplot2")
+library (Rtsne)
+library(ggplot2)
+tsne_obj <- Rtsne(distances, is_distance = TRUE)
+
+tsne_data <- tsne_obj$Y %>%
+  data.frame() %>%
+  setNames(c("X", "Y")) %>%
+  mutate(cluster = factor(final_cl$clustering))
+
+ggplot(aes(x = X, y = Y), data = tsne_data) +
+  geom_point(aes(color = cluster))
